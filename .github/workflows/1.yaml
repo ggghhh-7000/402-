@@ -1,0 +1,42 @@
+name: 禁止刪除檔案守衛
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+
+jobs:
+  check-deleted-files:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: 檢查是否有檔案被刪除並關閉 PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100
+            });
+
+            const deletedFiles = files.filter(file => file.status === 'removed');
+
+            if (deletedFiles.length > 0) {
+              const fileNames = deletedFiles.map(f => `\`${f.filename}\``).join('、');
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `⚠️ 偵測到您刪除了以下檔案：${fileNames}。\n本專案不允許刪除任何檔案，系統已自動關閉此請求。`
+              });
+
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                state: 'closed'
+              });
+            }
